@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Ideathon (Versione GitHub Pages)</title>
+  
+  <!-- Tailwind CSS per uno stile moderno e reattivo -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js per la generazione dei grafici -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- FontAwesome per le icone -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  
+  <style>
+    /* Styling Scrollbar moderna */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    /* Effetto "Glassmorphism" per i pannelli */
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+    }
+    
+    /* Animazione di caricamento pannelli */
+    .fade-in { animation: fadeIn 0.6s ease-out forwards; opacity: 0; transform: translateY(10px); }
+    @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+
+    /* Area scrollabile per le liste dei candidati */
+    .custom-scroll-area {
+      max-height: 650px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+    
+    /* Area di testo per visioni molto lunghe per evitare che una singola card occupi tutto lo schermo */
+    .vision-text-area {
+      max-height: 200px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen">
+
+  <!-- Schermata di Caricamento -->
+  <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50/90 backdrop-blur-sm transition-opacity duration-300">
+    <div class="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4 shadow-lg"></div>
+    <h2 class="text-xl font-semibold text-slate-800">Elaborazione Candidature...</h2>
+    <p class="text-slate-500 mt-2 text-sm font-medium">Download dei dati da Google Sheets in corso</p>
+  </div>
+
+  <!-- Contenitore Principale -->
+  <div id="app" class="hidden flex flex-col min-h-screen">
+    
+    <!-- Navbar / Header -->
+    <nav class="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
+      <div class="flex items-center gap-3">
+        <div class="bg-gradient-to-tr from-blue-600 to-indigo-500 text-white p-2.5 rounded-xl shadow-md">
+          <i class="fas fa-lightbulb text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-extrabold text-slate-800 tracking-tight">Candidature Ideathon <span class="ml-2 text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full align-middle">Summit 2026</span></h1>
+          <p class="text-xs text-slate-500 font-medium">Gestione visioni e partecipanti in tempo reale</p>
+        </div>
+      </div>
+      <button onclick="fetchData()" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm px-4 py-2 rounded-xl font-semibold transition-all flex items-center gap-2 active:scale-95">
+        <i class="fas fa-sync-alt text-blue-500" id="refresh-icon"></i>
+        <span class="hidden sm:inline">Sincronizza</span>
+      </button>
+    </nav>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6 lg:space-y-8">
+      
+      <!-- Contenitore Errori -->
+      <div id="error-container" class="hidden bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-r-xl shadow-sm relative" role="alert">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-exclamation-triangle"></i>
+          <strong class="font-bold">Attenzione!</strong>
+        </div>
+        <span class="block sm:inline mt-1 text-sm" id="error-message"></span>
+      </div>
+
+      <!-- KPI Grid -->
+      <div id="kpi-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
+        <!-- Inseriti tramite JS -->
+      </div>
+
+      <!-- Contenitori Specifici per i due Ideathon -->
+      <div id="ideathon-containers" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 fade-in" style="animation-delay: 0.2s">
+        <!-- Generato tramite JS -->
+      </div>
+
+      <!-- Sezione Grafici Generici (Fallback nel caso in cui non trovi le colonne dell'Ideathon) -->
+      <div id="standard-charts" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div class="lg:col-span-2 glass-panel rounded-2xl p-5 lg:p-6">
+          <h3 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><i class="fas fa-chart-column text-blue-500"></i> <span id="main-chart-title">Analisi</span></h3>
+          <div class="relative h-72 w-full"><canvas id="mainChart"></canvas></div>
+        </div>
+        <div class="glass-panel rounded-2xl p-5 lg:p-6">
+          <h3 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><i class="fas fa-chart-pie text-indigo-500"></i> <span id="doughnut-chart-title">Distribuzione</span></h3>
+          <div class="relative h-72 w-full flex justify-center"><canvas id="doughnutChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Tabella Dati (Sempre visibile) -->
+      <div class="glass-panel rounded-2xl overflow-hidden fade-in shadow-sm" style="animation-delay: 0.3s">
+        <div class="p-5 lg:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/50">
+          <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <i class="fas fa-table text-emerald-500"></i> Database Completo
+          </h3>
+          <div class="relative w-full sm:w-72">
+            <i class="fas fa-search absolute left-3.5 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="Cerca candidato, parola chiave..." class="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-shadow text-sm">
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-slate-200" id="dataTable">
+            <thead class="bg-slate-50/80 backdrop-blur-sm" id="table-head"></thead>
+            <tbody class="bg-white/80 divide-y divide-slate-100 text-sm" id="table-body"></tbody>
+          </table>
+        </div>
+        <div class="p-4 bg-slate-50/80 border-t border-slate-200 text-xs text-slate-500 text-center font-medium" id="table-footer"></div>
+      </div>
+      
+    </main>
+  </div>
+
+  <script>
+    let rawDataset = [];
+    let chartInstanceMain = null;
+    let chartInstanceDoughnut = null;
+    
+    // URL della Web App di Google Apps Script (assicurati che doGet restituisca JSON!)
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbvHQyIW1XYb1HK2v6Mz2yhhfMER_IS1A9xqZ5gbmXORQyRhgpoaazfv1FkMWLNhQ/exec';
+
+    // Definiamo i due gruppi principali per avere titoli puliti
+    const GROUP_4_MAGGIO = "4 Maggio | Mobilità";
+    const GROUP_5_MAGGIO = "5 Maggio | Ambiente";
+
+    window.onload = () => fetchData();
+
+    async function fetchData() {
+      // Imposta lo stato di caricamento nella UI
+      document.getElementById('loader').classList.remove('hidden');
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('error-container').classList.add('hidden');
+      const icon = document.getElementById('refresh-icon');
+      if(icon) icon.classList.add('fa-spin');
+
+      try {
+        // Chiamata esterna (fetch) al server di Google Apps Script
+        const response = await fetch(APPS_SCRIPT_URL);
+        
+        if (!response.ok) {
+          throw new Error(`Errore HTTP: ${response.status}`);
+        }
+
+        const data = await response.json();
+        processData(data);
+        
+      } catch (error) {
+        console.error("Errore Fetch:", error);
+        showError("Impossibile contattare Google Sheets. Assicurati che l'Apps Script sia configurato per restituire JSON e permetta l'accesso 'A chiunque'. Dettagli: " + error.message);
+      }
+    }
+
+    function showError(err) {
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      const errContainer = document.getElementById('error-container');
+      errContainer.classList.remove('hidden');
+      document.getElementById('error-message').textContent = err.message || err;
+      const icon = document.getElementById('refresh-icon');
+      if(icon) icon.classList.remove('fa-spin');
+    }
+
+    function processData(data) {
+      const icon = document.getElementById('refresh-icon');
+      if(icon) icon.classList.remove('fa-spin');
+      if(data && data.error) return showError(data.error);
+      
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      if(!data || data.length === 0) return showError("Nessun dato valido ricevuto dal foglio.");
+
+      rawDataset = data;
+      const headers = Object.keys(data[0]);
+
+      let colFirstName = headers.find(h => h.toLowerCase().includes('first name') || h.toLowerCase() === 'nome');
+      let colLastName = headers.find(h => h.toLowerCase().includes('last name') || h.toLowerCase() === 'cognome');
+      let colVision = headers.find(h => h.toLowerCase().includes('visione') || h.toLowerCase().includes('2040'));
+      let colIdeathon = headers.find(h => h.toLowerCase().includes('ideathon vorresti') || h.toLowerCase().includes('quale ideathon'));
+
+      if(colVision && colIdeathon) {
+        document.getElementById('standard-charts').classList.add('hidden');
+        document.getElementById('ideathon-containers').classList.remove('hidden');
+        
+        let groupedData = groupDataBySmartChoice(data, colIdeathon);
+        renderIdeathonKPIs(data.length, groupedData);
+        renderIdeathonContainers(groupedData, colFirstName, colLastName, colVision);
+      } else {
+        document.getElementById('standard-charts').classList.remove('hidden');
+        document.getElementById('ideathon-containers').classList.add('hidden');
+        renderGenericKPIs(data);
+        renderCharts(data, headers);
+      }
+
+      renderTable(data, headers);
+    }
+
+    // === FUNZIONI INTELLIGENTI ===
+
+    function groupDataBySmartChoice(data, colIdeathon) {
+      let groups = {
+        [GROUP_4_MAGGIO]: [],
+        [GROUP_5_MAGGIO]: []
+      };
+
+      data.forEach(row => {
+        let choice = String(row[colIdeathon] || "").toLowerCase();
+        
+        // Se la stringa contiene "4 mag" la aggiunge al gruppo Mobilità
+        if (choice.includes('4 mag')) {
+          groups[GROUP_4_MAGGIO].push(row);
+        }
+        
+        // Se la stringa contiene "5 mag" la aggiunge al gruppo Ambiente
+        if (choice.includes('5 mag')) {
+          groups[GROUP_5_MAGGIO].push(row);
+        }
+      });
+
+      return groups;
+    }
+
+    function renderIdeathonKPIs(totalUnique, groupedData) {
+      const container = document.getElementById('kpi-grid');
+      
+      let count4Mag = groupedData[GROUP_4_MAGGIO].length;
+      let count5Mag = groupedData[GROUP_5_MAGGIO].length;
+      
+      container.innerHTML = `
+        ${createKPICard('Totale Candidature', totalUnique, 'fas fa-users', 'bg-blue-100 text-blue-600')}
+        ${createKPICard(GROUP_4_MAGGIO, count4Mag, 'fas fa-car-side', 'bg-indigo-100 text-indigo-600')}
+        ${createKPICard(GROUP_5_MAGGIO, count5Mag, 'fas fa-leaf', 'bg-emerald-100 text-emerald-600')}
+      `;
+    }
+
+    function renderIdeathonContainers(groupedData, colFirst, colLast, colVision) {
+      const mainContainer = document.getElementById('ideathon-containers');
+      mainContainer.innerHTML = '';
+
+      // Configurazione estetica fissa per le due giornate
+      const configs = [
+        {
+          key: GROUP_4_MAGGIO,
+          title: "4 Maggio",
+          subtitle: "Il futuro della Mobilità",
+          borderColor: "border-t-indigo-500",
+          bgColor: "bg-indigo-50",
+          badgeColor: "bg-indigo-100 text-indigo-700 border-indigo-200",
+          icon: "fas fa-car-side text-indigo-500"
+        },
+        {
+          key: GROUP_5_MAGGIO,
+          title: "5 Maggio",
+          subtitle: "Il futuro dell'Ambiente",
+          borderColor: "border-t-emerald-500",
+          bgColor: "bg-emerald-50",
+          badgeColor: "bg-emerald-100 text-emerald-700 border-emerald-200",
+          icon: "fas fa-leaf text-emerald-500"
+        }
+      ];
+
+      configs.forEach(config => {
+        let participants = groupedData[config.key];
+
+        let columnHtml = `
+          <div class="glass-panel rounded-2xl overflow-hidden border-t-4 ${config.borderColor} shadow-lg flex flex-col h-full bg-white">
+            
+            <!-- Intestazione Pulita -->
+            <div class="${config.bgColor} px-6 py-5 border-b border-slate-100 flex justify-between items-start">
+              <div>
+                <h3 class="text-xl font-black text-slate-800 flex items-center gap-2">
+                  <i class="${config.icon}"></i> ${config.title}
+                </h3>
+                <p class="text-sm font-medium text-slate-600 mt-1">${config.subtitle}</p>
+              </div>
+              <span class="px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm border ${config.badgeColor}">
+                ${participants.length} iscritti
+              </span>
+            </div>
+
+            <!-- Lista Iscritti -->
+            <div class="p-5 flex-1 custom-scroll-area space-y-4 bg-slate-50/30">
+        `;
+
+        if(participants.length === 0) {
+          columnHtml += `
+            <div class="flex flex-col items-center justify-center py-10 text-slate-400">
+              <i class="fas fa-inbox text-3xl mb-2 opacity-50"></i>
+              <p class="italic text-sm">Ancora nessuna candidatura</p>
+            </div>`;
+        } else {
+          participants.forEach(user => {
+            let nome = "Anonimo";
+            if(colFirst && colLast) nome = `${user[colFirst] || ''} ${user[colLast] || ''}`.trim();
+            else if (colFirst) nome = user[colFirst] || 'Anonimo';
+
+            let vision = user[colVision] || '<span class="text-slate-400 italic">Nessuna visione inserita</span>';
+
+            columnHtml += `
+              <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:border-slate-300 transition-all group">
+                <div class="flex items-center gap-3 mb-3 pb-3 border-b border-slate-50">
+                  <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-100 to-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm shadow-inner">
+                    ${nome.substring(0, 2).toUpperCase()}
+                  </div>
+                  <h4 class="font-bold text-slate-800">${nome}</h4>
+                </div>
+                <div class="text-sm text-slate-600 relative vision-text-area">
+                  <p class="leading-relaxed text-justify pr-2">${vision}</p>
+                </div>
+              </div>
+            `;
+          });
+        }
+
+        columnHtml += `</div></div>`;
+        mainContainer.innerHTML += columnHtml;
+      });
+    }
+
+    function createKPICard(title, value, iconClass, colorClasses) {
+      return `
+        <div class="glass-panel rounded-2xl p-6 flex items-center justify-between group hover:-translate-y-1 transition-transform duration-300">
+          <div>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">${title}</p>
+            <h4 class="text-3xl font-black text-slate-800">${value}</h4>
+          </div>
+          <div class="w-14 h-14 rounded-2xl flex items-center justify-center ${colorClasses} shadow-inner group-hover:scale-110 transition-transform">
+            <i class="${iconClass} text-2xl"></i>
+          </div>
+        </div>
+      `;
+    }
+
+    // === FUNZIONI TABELLA E RICERCA ===
+
+    function renderTable(data, columns) {
+      const thead = document.getElementById('table-head');
+      let theadHtml = '<tr>';
+      columns.forEach(col => {
+        theadHtml += `<th scope="col" class="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap bg-slate-50/50">${col}</th>`;
+      });
+      theadHtml += '</tr>';
+      thead.innerHTML = theadHtml;
+
+      renderTableRows(data.slice(0, 100), columns);
+      document.getElementById('table-footer').textContent = `Visualizzazione: max 100 righe su ${data.length} totali. Usa la ricerca per filtrare.`;
+    }
+
+    function renderTableRows(rows, columns) {
+      const tbody = document.getElementById('table-body');
+      let bodyHtml = '';
+      if(rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${columns.length}" class="px-6 py-8 text-center text-slate-500 font-medium">Nessun risultato trovato.</td></tr>`;
+        return;
+      }
+
+      rows.forEach((row, i) => {
+        bodyHtml += `<tr class="hover:bg-slate-50/80 transition-colors group">`;
+        columns.forEach((col, j) => {
+          let val = row[col];
+          if(val !== "" && val !== null && !isNaN(Number(val)) && typeof val !== 'boolean' && String(val).trim() !== '') {
+             val = Number.isInteger(Number(val)) ? Number(val).toLocaleString('it-IT') : Number(val).toLocaleString('it-IT', {minimumFractionDigits: 2});
+          }
+          
+          let styling = j === 0 ? "px-6 py-3.5 whitespace-nowrap text-slate-900 font-semibold" : "px-6 py-3.5 text-slate-600";
+          
+          let displayVal = val !== undefined && val !== null ? val : '-';
+          if(typeof displayVal === 'string' && displayVal.length > 80 && col.toLowerCase().includes('visione')) {
+            displayVal = `<div class="truncate w-64" title="${displayVal.replace(/"/g, '&quot;')}">${displayVal}</div>`;
+          }
+
+          bodyHtml += `<td class="${styling} text-sm">${displayVal}</td>`;
+        });
+        bodyHtml += `</tr>`;
+      });
+      tbody.innerHTML = bodyHtml;
+    }
+
+    function filterTable() {
+      const term = document.getElementById('searchInput').value.toLowerCase();
+      if(!rawDataset || rawDataset.length === 0) return;
+      const columns = Object.keys(rawDataset[0]);
+      
+      const filteredData = rawDataset.filter(row => {
+        return columns.some(col => {
+          let val = row[col];
+          if(val === null || val === undefined) return false;
+          return String(val).toLowerCase().includes(term);
+        });
+      });
+      
+      renderTableRows(filteredData.slice(0, 100), columns);
+      let footerTxt = term === '' 
+        ? `Visualizzazione: max 100 righe su ${rawDataset.length} totali.`
+        : `Trovati ${filteredData.length} risultati. (Mostrati max 100)`;
+      document.getElementById('table-footer').textContent = footerTxt;
+    }
+
+    function renderGenericKPIs(data) { document.getElementById('kpi-grid').innerHTML = createKPICard('Totale Righe', data.length, 'fas fa-hashtag', 'bg-blue-100 text-blue-600'); }
+    function renderCharts() {}
+  </script>
+</body>
+</html>
