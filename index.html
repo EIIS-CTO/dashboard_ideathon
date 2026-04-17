@@ -136,8 +136,8 @@
     let chartInstanceMain = null;
     let chartInstanceDoughnut = null;
     
-    // URL della Web App di Google Apps Script (assicurati che doGet restituisca JSON!)
-    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw8OfCa91T3TAceP9z0Dd3lnQoX51tAJP06o1gfLtX0uXGZriT52ArkBV-8cCFsSzeO/exec';
+    // URL della Web App di Google Apps Script 
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxC8WHGb-6tyjl8cBd5o3g9Be4UW237i1OPfqd6vtnJLPwLVrMYQGg8Y60Simck2AtT/exec';
 
     // Definiamo i due gruppi principali per avere titoli puliti
     const GROUP_4_MAGGIO = "4 Maggio | Mobilità";
@@ -146,7 +146,6 @@
     window.onload = () => fetchData();
 
     async function fetchData() {
-      // Imposta lo stato di caricamento nella UI
       document.getElementById('loader').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
       document.getElementById('error-container').classList.add('hidden');
@@ -154,7 +153,6 @@
       if(icon) icon.classList.add('fa-spin');
 
       try {
-        // Chiamata esterna (fetch) al server di Google Apps Script
         const response = await fetch(APPS_SCRIPT_URL);
         
         if (!response.ok) {
@@ -189,13 +187,19 @@
       document.getElementById('app').classList.remove('hidden');
       if(!data || data.length === 0) return showError("Nessun dato valido ricevuto dal foglio.");
 
+      // Nel caso in cui non sia stato fatto il reverse nel backend, lo forziamo qui come fallback per sicurezza
       rawDataset = data;
       const headers = Object.keys(data[0]);
 
+      // CERCA LE COLONNE INTELLIGENTEMENTE
       let colFirstName = headers.find(h => h.toLowerCase().includes('first name') || h.toLowerCase() === 'nome');
       let colLastName = headers.find(h => h.toLowerCase().includes('last name') || h.toLowerCase() === 'cognome');
       let colVision = headers.find(h => h.toLowerCase().includes('visione') || h.toLowerCase().includes('2040'));
       let colIdeathon = headers.find(h => h.toLowerCase().includes('ideathon vorresti') || h.toLowerCase().includes('quale ideathon'));
+      
+      // Aggiunti controlli per CV e LinkedIn
+      let colLinkedIn = headers.find(h => h.toLowerCase().includes('linkedin'));
+      let colCV = headers.find(h => h.toLowerCase().match(/\bcv\b/) || h.toLowerCase().includes('curriculum'));
 
       if(colVision && colIdeathon) {
         document.getElementById('standard-charts').classList.add('hidden');
@@ -203,7 +207,8 @@
         
         let groupedData = groupDataBySmartChoice(data, colIdeathon);
         renderIdeathonKPIs(data.length, groupedData);
-        renderIdeathonContainers(groupedData, colFirstName, colLastName, colVision);
+        // Passiamo anche le colonne CV e LinkedIn alla funzione che disegna le schede
+        renderIdeathonContainers(groupedData, colFirstName, colLastName, colVision, colLinkedIn, colCV);
       } else {
         document.getElementById('standard-charts').classList.remove('hidden');
         document.getElementById('ideathon-containers').classList.add('hidden');
@@ -225,15 +230,8 @@
       data.forEach(row => {
         let choice = String(row[colIdeathon] || "").toLowerCase();
         
-        // Se la stringa contiene "4 mag" la aggiunge al gruppo Mobilità
-        if (choice.includes('4 mag')) {
-          groups[GROUP_4_MAGGIO].push(row);
-        }
-        
-        // Se la stringa contiene "5 mag" la aggiunge al gruppo Ambiente
-        if (choice.includes('5 mag')) {
-          groups[GROUP_5_MAGGIO].push(row);
-        }
+        if (choice.includes('4 mag')) groups[GROUP_4_MAGGIO].push(row);
+        if (choice.includes('5 mag')) groups[GROUP_5_MAGGIO].push(row);
       });
 
       return groups;
@@ -252,11 +250,11 @@
       `;
     }
 
-    function renderIdeathonContainers(groupedData, colFirst, colLast, colVision) {
+    // AGGIORNATA: Ora riceve anche colLinkedIn e colCV
+    function renderIdeathonContainers(groupedData, colFirst, colLast, colVision, colLinkedIn, colCV) {
       const mainContainer = document.getElementById('ideathon-containers');
       mainContainer.innerHTML = '';
 
-      // Configurazione estetica fissa per le due giornate
       const configs = [
         {
           key: GROUP_4_MAGGIO,
@@ -283,8 +281,6 @@
 
         let columnHtml = `
           <div class="glass-panel rounded-2xl overflow-hidden border-t-4 ${config.borderColor} shadow-lg flex flex-col h-full bg-white">
-            
-            <!-- Intestazione Pulita -->
             <div class="${config.bgColor} px-6 py-5 border-b border-slate-100 flex justify-between items-start">
               <div>
                 <h3 class="text-xl font-black text-slate-800 flex items-center gap-2">
@@ -296,8 +292,6 @@
                 ${participants.length} iscritti
               </span>
             </div>
-
-            <!-- Lista Iscritti -->
             <div class="p-5 flex-1 custom-scroll-area space-y-4 bg-slate-50/30">
         `;
 
@@ -314,6 +308,28 @@
             else if (colFirst) nome = user[colFirst] || 'Anonimo';
 
             let vision = user[colVision] || '<span class="text-slate-400 italic">Nessuna visione inserita</span>';
+            
+            // ESTRELAZIONE LINK E GENERAZIONE TASTI
+            let linkedinUrl = colLinkedIn ? user[colLinkedIn] : '';
+            let cvUrl = colCV ? user[colCV] : '';
+            
+            let buttonsHtml = '';
+            if ((linkedinUrl && String(linkedinUrl).trim() !== '') || (cvUrl && String(cvUrl).trim() !== '')) {
+              buttonsHtml += `<div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2">`;
+              
+              if (linkedinUrl && String(linkedinUrl).trim() !== '') {
+                // Assicuriamoci che il link inizi con http/https per evitare link relativi non funzionanti
+                let href = String(linkedinUrl).startsWith('http') ? linkedinUrl : 'https://' + linkedinUrl;
+                buttonsHtml += `<a href="${href}" target="_blank" class="text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"><i class="fab fa-linkedin text-sm"></i> Profilo</a>`;
+              }
+              
+              if (cvUrl && String(cvUrl).trim() !== '') {
+                let href = String(cvUrl).startsWith('http') ? cvUrl : 'https://' + cvUrl;
+                buttonsHtml += `<a href="${href}" target="_blank" class="text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"><i class="fas fa-file-pdf text-sm"></i> Apri CV</a>`;
+              }
+              
+              buttonsHtml += `</div>`;
+            }
 
             columnHtml += `
               <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:border-slate-300 transition-all group">
@@ -326,6 +342,7 @@
                 <div class="text-sm text-slate-600 relative vision-text-area">
                   <p class="leading-relaxed text-justify pr-2">${vision}</p>
                 </div>
+                ${buttonsHtml}
               </div>
             `;
           });
@@ -381,11 +398,16 @@
              val = Number.isInteger(Number(val)) ? Number(val).toLocaleString('it-IT') : Number(val).toLocaleString('it-IT', {minimumFractionDigits: 2});
           }
           
+          // Formatta i link nella tabella come cliccabili se iniziano con http
           let styling = j === 0 ? "px-6 py-3.5 whitespace-nowrap text-slate-900 font-semibold" : "px-6 py-3.5 text-slate-600";
-          
           let displayVal = val !== undefined && val !== null ? val : '-';
-          if(typeof displayVal === 'string' && displayVal.length > 80 && col.toLowerCase().includes('visione')) {
-            displayVal = `<div class="truncate w-64" title="${displayVal.replace(/"/g, '&quot;')}">${displayVal}</div>`;
+          
+          if(typeof displayVal === 'string') {
+            if(displayVal.length > 80 && col.toLowerCase().includes('visione')) {
+              displayVal = `<div class="truncate w-64" title="${displayVal.replace(/"/g, '&quot;')}">${displayVal}</div>`;
+            } else if (displayVal.startsWith('http')) {
+              displayVal = `<a href="${displayVal}" target="_blank" class="text-blue-500 hover:underline">Apri link</a>`;
+            }
           }
 
           bodyHtml += `<td class="${styling} text-sm">${displayVal}</td>`;
